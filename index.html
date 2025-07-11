@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kiểm tra BHYT nâng cao (Tự lưu danh mục)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f7f7f7; }
+    h2 { color: #003366; }
+    .error { color: red; }
+    .success { color: green; }
+    ul { margin-bottom: 20px; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <h2>Kiểm tra BHYT nâng cao: MA_MAY, MA_DICHVU, MA_CCHN, giờ bác sĩ</h2>
+  <ol>
+    <li><b>Tải danh mục Excel</b> (chứa cả MA_MAY và DV cần kiểm tra MA_MAY)<br><input type="file" id="excelFile" /></li>
+    <li><b>Tải file XML hồ sơ</b><br><input type="file" id="xmlFiles" multiple /></li>
+  </ol>
+  <button onclick="exportToExcel()">📤 Xuất lỗi</button>
+  <button onclick="exportSuccessFiles()">📤 Xuất danh sách file không lỗi</button>
+  <button onclick="clearDanhMuc()">🗑 Xóa danh mục đã lưu</button>
+  <div id="resultArea"></div>
+
+  <script>
+    let dmMay = new Set();
+    let dvPhaiKiemTraMaMay_MA = {};
+    let dvPhaiKiemTraMaMay_TEN = new Set();
+    let errorsToExport = [];
+    let successFiles = [];
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const dmMayStr = localStorage.getItem("DM_MA_MAY");
+      if (dmMayStr) {
+        dmMay = new Set(JSON.parse(dmMayStr));
+        alert("✅ Đã nạp danh mục MA_MAY từ bộ nhớ.");
+      }
+
+      const dvMaStr = localStorage.getItem("DM_DV_MA");
+      if (dvMaStr) {
+        dvPhaiKiemTraMaMay_MA = JSON.parse(dvMaStr);
+      }
+
+      const dvTenStr = localStorage.getItem("DM_DV_TEN");
+      if (dvTenStr) {
+        dvPhaiKiemTraMaMay_TEN = new Set(JSON.parse(dvTenStr));
+      }
+    });
+
+    function normalizeVN(str) {
+      return str?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || "";
+    }
+
+    function base64ToUtf8(base64Str) {
+      const binaryString = atob(base64Str);
+      const bytes = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+      const utf8decoder = new TextDecoder("utf-8");
+      return utf8decoder.decode(bytes);
+    }
+
+    function getTagValue(node, tags) {
+      for (const tag of tags) {
+        const el = node.getElementsByTagName(tag)[0];
+        if (el && el.textContent?.trim()) {
+          return el.textContent.trim();
+        }
+      }
+      return "";
+    }
+
+    function dvBatBuocMaMay(maDV, tenDV) {
+      if (!maDV && !tenDV) return false;
+      if (dvPhaiKiemTraMaMay_MA[maDV]) return true;
+      if (dvPhaiKiemTraMaMay_TEN.has(normalizeVN(tenDV))) return true;
+      return false;
+    }
+
+    document.getElementById("excelFile").addEventListener("change", function (e) {
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const data = new Uint8Array(event.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+
+        const sheetMaMay = wb.Sheets["MA_MAY"];
+        if (sheetMaMay) {
+          const rows = XLSX.utils.sheet_to_json(sheetMaMay);
+          rows.forEach(r => {
+            if (r.MA_MAY) dmMay.add(r.MA_MAY.toString().trim());
+          });
+          alert("✅ Đã nạp " + dmMay.size + " mã máy từ sheet MA_MAY.");
+        } else {
+          alert("⚠️ Không tìm thấy sheet MA_MAY.");
+        }
+
+        const sheetDV = wb.Sheets["DV_CAN_KIEMTRA_MA_MAY"];
+        if (sheetDV) {
+          const rowsDV = XLSX.utils.sheet_to_json(sheetDV);
+          rowsDV.forEach(r => {
+            if (r.MA_DICHVU) {
+              dvPhaiKiemTraMaMay_MA[r.MA_DICHVU.trim()] = true;
+            }
+            if (r.TEN_DICHVU) {
+              dvPhaiKiemTraMaMay_TEN.add(normalizeVN(r.TEN_DICHVU.trim()));
+            }
+          });
+          alert("✅ Đã nạp danh mục DV cần kiểm tra mã máy.");
+        } else {
+          alert("⚠️ Không tìm thấy sheet DV_CAN_KIEMTRA_MA_MAY.");
+        }
+
+        localStorage.setItem("DM_MA_MAY", JSON.stringify([...dmMay]));
+        localStorage.setItem("DM_DV_MA", JSON.stringify(dvPhaiKiemTraMaMay_MA));
+        localStorage.setItem("DM_DV_TEN", JSON.stringify([...dvPhaiKiemTraMaMay_TEN]));
+        alert("✅ Danh mục đã được lưu. Lần sau mở không cần tải Excel nữa.");
+      };
+      reader.readAsArrayBuffer(e.target.files[0]);
+    });
+
+    document.getElementById("xmlFiles").addEventListener("change", function (e) {
+      if (
+        dmMay.size === 0 &&
+        Object.keys(dvPhaiKiemTraMaMay_MA).length === 0 &&
+        dvPhaiKiemTraMaMay_TEN.size === 0
+      ) {
+        alert("⚠️ Chưa nạp danh mục dữ liệu (MA_MAY hoặc DV cần kiểm tra MA_MAY). Vui lòng tải file Excel trước.");
+        return;
+      }
+
+      const files = e.target.files;
+      const resultArea = document.getElementById("resultArea");
+      resultArea.innerHTML = "";
+      errorsToExport = [];
+      successFiles = [];
+
+      let filesProcessed = 0;
+
+      [...files].forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(event.target.result, "text/xml");
+            const fileHoSoNodes = xmlDoc.getElementsByTagName("FILEHOSO");
+
+            for (const fileHoSo of fileHoSoNodes) {
+              const noiDungNode = fileHoSo.getElementsByTagName("NOIDUNGFILE")[0];
+              if (!noiDungNode) continue;
+
+              const decoded = base64ToUtf8(noiDungNode.textContent.trim());
+              const innerDoc = parser.parseFromString(decoded, "text/xml");
+              const errors = [];
+
+              const dvktNodes = [...innerDoc.getElementsByTagName("CHI_TIET_DVKT")];
+              const ngayVao = innerDoc.getElementsByTagName("NGAY_VAO")?.[0]?.textContent?.trim();
+              const ngayRa = innerDoc.getElementsByTagName("NGAY_RA")?.[0]?.textContent?.trim();
+
+              const gioMap = new Map();
+
+              dvktNodes.forEach((node, index) => {
+                const maMay = getTagValue(node, ["MA_MAY"]);
+                const maDV = getTagValue(node, ["MA_DICHVU", "MA_DICH_VU"]);
+                const tenDV = getTagValue(node, ["TEN_DICHVU", "TEN_DICH_VU"]);
+                const maBS = getTagValue(node, ["MA_CCHN", "MA_BAC_SI"]);
+                const maVTYT = getTagValue(node, ["MA_VTYT", "MA_VAT_TU"]);
+                const ngay = getTagValue(node, ["NGAY_YLENH"]);
+                const gio = getTagValue(node, ["GIO"]);
+
+                const key = `${maBS}_${ngay}_${gio}`;
+                if (key && gio) {
+                  gioMap.set(key, (gioMap.get(key) || 0) + 1);
+                }
+
+                if (dvBatBuocMaMay(maDV, tenDV)) {
+                  if (!maMay || maMay === "0" || maMay === "000" || maMay === ".") {
+                    errors.push(`❌ Dòng ${index + 1}: Thiếu mã máy - DV: ${maDV} - ${tenDV}`);
+                  } else if (maMay.length < 3) {
+                    errors.push(`❌ Dòng ${index + 1}: Mã máy '${maMay}' quá ngắn.`);
+                  } else if (dmMay.size > 0 && !dmMay.has(maMay)) {
+                    errors.push(`❌ Dòng ${index + 1}: Mã máy '${maMay}' không có trong danh mục - DV: ${maDV} - ${tenDV}`);
+                  }
+                }
+
+                if (!maDV && !maVTYT) {
+                  errors.push(`❌ Dòng ${index + 1}: Thiếu MA_DICHVU (không phải vật tư) cho dịch vụ '${tenDV}'.`);
+                }
+
+                if (!maBS) {
+                  errors.push(`❌ Dòng ${index + 1}: Thiếu MA_CCHN (bác sĩ) cho dịch vụ '${tenDV}'.`);
+                }
+
+                if (ngayVao && ngayRa && ngay) {
+                  if (ngay < ngayVao || ngay > ngayRa) {
+                    errors.push(`❌ Dòng ${index + 1}: Ngày y lệnh ${ngay} ngoài khoảng điều trị (${ngayVao} - ${ngayRa}).`);
+                  }
+                }
+              });
+
+              for (const [key, count] of gioMap.entries()) {
+                if (count > 1) {
+                  const [bs, ngay, gio] = key.split("_");
+                  errors.push(`❌ Trùng giờ: Bác sĩ ${bs} thực hiện nhiều DV lúc ${gio} ngày ${ngay}`);
+                }
+              }
+
+              if (ngayVao && ngayRa && ngayVao > ngayRa) {
+                errors.push(`❌ Ngày ra viện trước ngày vào viện (${ngayVao} → ${ngayRa})`);
+              } else if (ngayVao && ngayRa && ngayVao === ngayRa) {
+                errors.push(`⚠️ Số ngày điều trị bằng 0 (ngày vào = ngày ra: ${ngayVao})`);
+              }
+
+              if (errors.length > 0) {
+                resultArea.innerHTML += `<h4 class="error">❌ File ${file.name}</h4><ul>` +
+                  errors.map(e => `<li>${e}</li>`).join('') + "</ul><hr/>";
+                errorsToExport.push(...errors.map(e => `[${file.name}] ${e}`));
+              } else {
+                successFiles.push(file.name);
+              }
+            }
+
+            filesProcessed++;
+            if (filesProcessed === files.length) {
+              if (successFiles.length > 0 && errorsToExport.length === 0) {
+                resultArea.innerHTML = `<h4 class="success">✅ Tất cả ${successFiles.length} file đều không phát hiện lỗi</h4>`;
+              } else if (successFiles.length > 0) {
+                resultArea.innerHTML += `<h4 class="success">✅ Có ${successFiles.length} file không phát hiện lỗi</h4>`;
+              }
+            }
+          } catch (ex) {
+            resultArea.innerHTML += `<h4 class="error">❌ File ${file.name} lỗi giải mã hoặc đọc hồ sơ! ${ex.message}</h4>`;
+          }
+        };
+        reader.readAsText(file);
+      });
+    });
+
+    function exportToExcel() {
+      if (errorsToExport.length === 0) {
+        alert("✅ Không có lỗi nào để xuất.");
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([["Danh sách lỗi"], ...errorsToExport.map(e => [e])]);
+      XLSX.utils.book_append_sheet(wb, ws, "Loi");
+      XLSX.writeFile(wb, "bao_cao_loi_bhxh_ma_may.xlsx");
+    }
+
+    function exportSuccessFiles() {
+      if (successFiles.length === 0) {
+        alert("⚠️ Không có file nào đạt.");
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([["Danh sách file không lỗi"], ...successFiles.map(f => [f])]);
+      XLSX.utils.book_append_sheet(wb, ws, "ThanhCong");
+      XLSX.writeFile(wb, "bao_cao_file_khong_loi.xlsx");
+    }
+
+    function clearDanhMuc() {
+      localStorage.removeItem("DM_MA_MAY");
+      localStorage.removeItem("DM_DV_MA");
+      localStorage.removeItem("DM_DV_TEN");
+      alert("✅ Đã xóa toàn bộ danh mục đã lưu. Hãy tải file Excel mới nếu muốn chạy tiếp.");
+      location.reload();
+    }
+  </script>
+</body>
+</html>
