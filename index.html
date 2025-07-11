@@ -4,30 +4,122 @@
   <meta charset="UTF-8" />
   <title>Kiểm Tra Mã Máy</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input[type="file"] { margin: 10px 0; }
-    button { margin: 10px 5px 10px 0; padding: 6px 12px; }
-    table, th, td { border: 1px solid #ccc; border-collapse: collapse; padding: 5px; }
-    th { background-color: #f0f0f0; }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f9f9f9;
+      margin: 0;
+      padding: 40px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      border-radius: 10px;
+      padding: 30px 40px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #007bff;
+    }
+
+    label {
+      font-weight: 500;
+      display: block;
+      margin: 15px 0 5px;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .buttons {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 0 10px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    h2 {
+      margin-top: 40px;
+      font-size: 20px;
+      color: #444;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f0f8ff;
+      font-weight: 600;
+    }
+
+    tr:nth-child(even) {
+      background-color: #fafafa;
+    }
+
+    p.success {
+      color: green;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
-  <h1>Kiểm Tra Mã Máy</h1>
+  <div class="container">
+    <h1>Kiểm Tra Mã Máy</h1>
 
-  <label>1. Tải danh mục mã máy chuẩn:</label><br>
-  <input type="file" id="fileDanhMuc" /><br><br>
+    <label>1. Tải danh mục mã máy chuẩn:</label>
+    <input type="file" id="fileDanhMuc" />
 
-  <label>2. Tải danh sách cần kiểm tra:</label><br>
-  <input type="file" id="fileKiemTra" /><br><br>
+    <label>2. Tải danh sách cần kiểm tra:</label>
+    <input type="file" id="fileKiemTra" />
 
-  <button onclick="kiemTra()">Kiểm tra</button>
-  <button onclick="xuatBaoCao()">Xuất báo cáo lỗi</button>
+    <div class="buttons">
+      <button onclick="kiemTra()">Kiểm tra</button>
+      <button onclick="xuatBaoCao()">Xuất báo cáo lỗi</button>
+    </div>
 
-  <h2>Kết quả kiểm tra:</h2>
-  <div id="ketqua"></div>
+    <h2>Kết quả kiểm tra:</h2>
+    <div id="ketqua"></div>
+  </div>
 
+  <!-- Script giữ nguyên -->
   <script>
+    // toàn bộ JavaScript giữ nguyên từ phiên bản cũ
+    // (có thể tối ưu sau nếu bạn muốn)
     function readExcel(file, callback) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -106,7 +198,7 @@
             });
             html += `</table>`;
           } else {
-            html += `<p style="color: green;">Tất cả mã máy đều hợp lệ.</p>`;
+            html += `<p class="success">Tất cả mã máy đều hợp lệ.</p>`;
           }
 
           document.getElementById('ketqua').innerHTML = html;
